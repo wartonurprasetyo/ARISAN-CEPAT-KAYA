@@ -15,10 +15,4 @@
 - `/admin` hanya menerima pengguna yang UUID-nya berada di `admin_users`.
 
 Supabase Free cukup untuk WAR ini, tetapi project yang tidak aktif dapat dipause. Buka halaman dan cek `/admin` sebelum acara dimulai.
-# ARISAN-CEPAT-KAYA
-# ARISAN-CEPAT-KAYA
-# ARISAN-CEPAT-KAYA
-# ARISAN-CEPAT-KAYA
-# ARISAN-CEPAT-KAYA
-# ARISAN-CEPAT-KAYA
-# ARISAN-CEPAT-KAYA
+
