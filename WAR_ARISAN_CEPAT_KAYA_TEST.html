@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WAR ARISAN CEPAT KAYA</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(135deg,#fff7e6,#f5f7ff);color:#222}
+.wrap{max-width:760px;margin:auto;padding:24px}.hero{text-align:center;padding:28px 18px}.hero h1{font-size:34px;margin:0 0 8px}.hero p{margin:5px;color:#666}
+.card{background:#fff;border-radius:20px;padding:22px;margin:16px 0;box-shadow:0 8px 30px #0001}
+label{font-weight:bold}.input{width:100%;padding:14px;border:1px solid #ddd;border-radius:12px;margin-top:8px;font-size:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px}.slot{padding:17px;border:2px solid #57b866;border-radius:15px;background:#f2fff4;cursor:pointer;text-align:left}.slot b{display:block;font-size:17px}.slot span{font-size:13px;color:#666}.slot.taken{border-color:#ddd;background:#f1f1f1;color:#888;cursor:not-allowed}.slot.taken strong{color:#777}.slot.selected{border-color:#e5a400;background:#fff8df}
+button{padding:13px 18px;border:0;border-radius:12px;font-weight:bold;cursor:pointer}.primary{background:#222;color:#fff;width:100%;margin-top:15px}.danger{background:#eee;color:#333}.msg{padding:13px;border-radius:12px;margin-top:14px}.ok{background:#e9f8ec;color:#176c29}.warn{background:#fff4d6;color:#815c00}.closed{background:#ffe9e9;color:#9b1c1c}
+.result{width:100%;border-collapse:collapse}.result th,.result td{padding:11px;border-bottom:1px solid #eee;text-align:left}.total{font-size:18px;font-weight:bold;margin-top:14px}
+@media(max-width:560px){.grid{grid-template-columns:1fr}.hero h1{font-size:28px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<section class="hero">
+<h1>🔥 WAR ARISAN CEPAT KAYA 🔥</h1>
+<p><b>GET Rp2.000.000 / bulan</b></p>
+<p>Periode: November 2026 – Agustus 2027</p>
+<p class="small">MODE TEST — bisa di-reset kapan saja</p>
+</section>
+
+<div class="card">
+<label>Nama Perwakilan</label>
+<input id="name" class="input" placeholder="Masukkan nama perwakilan">
+<div id="status" class="msg warn">⚡ Silakan pilih bulan GET. 1 orang hanya boleh mendapatkan 1 slot.</div>
+</div>
+
+<div class="card">
+<h2 style="margin-top:0">⚡ PILIH BULAN GET</h2>
+<div id="slots" class="grid"></div>
+<button class="primary" onclick="resetTest()">🔄 Reset Test</button>
+</div>
+
+<div class="card">
+<h2 style="margin-top:0">🏆 HASIL WAR ARISAN CEPAT KAYA</h2>
+<table class="result">
+<thead><tr><th>No</th><th>Bulan GET</th><th>Perwakilan</th><th>GET</th></tr></thead>
+<tbody id="result"></tbody>
+</table>
+<div class="total">Total GET: Rp20.000.000</div>
+</div>
+</div>
+
+<script>
+const months=[
+["November 2026"],["Desember 2026"],["Januari 2027"],["Februari 2027"],["Maret 2027"],
+["April 2027"],["Mei 2027"],["Juni 2027"],["Juli 2027"],["Agustus 2027"]
+];
+let picks=JSON.parse(localStorage.getItem("warArisanTest")||"{}");
+let selected=null;
+
+function render(){
+ const slots=document.getElementById("slots");
+ slots.innerHTML="";
+ months.forEach((m,i)=>{
+  const who=picks[i];
+  const b=document.createElement("button");
+  b.className="slot "+(who?"taken":"");
+  b.disabled=!!who;
+  b.innerHTML=`<b>${i+1}. ${m[0]}</b><span>${who?"🔴 Sudah diambil oleh: "+who:"🟢 Rp2.000.000 — AMBIL"}</span>`;
+  if(!who)b.onclick=()=>take(i);
+  slots.appendChild(b);
+ });
+ document.getElementById("result").innerHTML=months.map((m,i)=>`<tr><td>${i+1}</td><td>${m[0]}</td><td>${picks[i]||"—"}</td><td>Rp2.000.000</td></tr>`).join("");
+ const count=Object.keys(picks).length;
+ const status=document.getElementById("status");
+ if(count===10){status.className="msg closed";status.textContent="🛑 WAR SELESAI! Seluruh 10 slot sudah terisi."}
+ else {status.className="msg warn";status.textContent=`⚡ ${count}/10 slot terisi. Siapa cepat dia dapat!`}
+}
+function take(i){
+ const n=document.getElementById("name").value.trim();
+ if(!n){alert("Masukkan nama perwakilan terlebih dahulu.");return}
+ if(Object.values(picks).some(x=>x.toLowerCase()===n.toLowerCase())){alert("Nama tersebut sudah mendapatkan slot. 1 orang hanya boleh 1 slot.");return}
+ if(picks[i]){alert("Slot sudah diambil orang lain.");render();return}
+ if(Object.keys(picks).length>=10){render();return}
+ picks[i]=n;localStorage.setItem("warArisanTest",JSON.stringify(picks));
+ document.getElementById("name").value="";
+ render();
+}
+function resetTest(){
+ if(confirm("Reset semua hasil test?")){picks={};localStorage.removeItem("warArisanTest");render();}
+}
+render();
+</script>
+</body>
+</html>
