@@ -18,3 +18,4 @@ Supabase Free cukup untuk WAR ini, tetapi project yang tidak aktif dapat dipause
 # ARISAN-CEPAT-KAYA
 # ARISAN-CEPAT-KAYA
 # ARISAN-CEPAT-KAYA
+# ARISAN-CEPAT-KAYA
