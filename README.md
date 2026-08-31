@@ -16,3 +16,4 @@
 
 Supabase Free cukup untuk WAR ini, tetapi project yang tidak aktif dapat dipause. Buka halaman dan cek `/admin` sebelum acara dimulai.
 # ARISAN-CEPAT-KAYA
+# ARISAN-CEPAT-KAYA
