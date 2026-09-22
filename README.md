@@ -26,4 +26,9 @@ node scripts/change-admin-password.mjs admin@example.com
 
 Jika email tidak diberikan, script akan memintanya secara interaktif. Password baru diminta dua kali dan tidak disimpan ke file.
 
+## Versioning aplikasi
+
+Versi aplikasi disimpan di `package.json` dan diekspos melalui `/version.json`.
+Saat merilis perubahan, naikkan kedua nilai versi agar browser lama mendeteksi versi server dan memuat ulang bundle terbaru secara otomatis.
+
 Supabase Free cukup untuk WAR ini, tetapi project yang tidak aktif dapat dipause. Buka halaman dan cek `/admin` sebelum acara dimulai.
