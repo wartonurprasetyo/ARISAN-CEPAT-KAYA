@@ -41,6 +41,9 @@ a { color: inherit; }
 .eyebrow { margin: 0 0 12px; color: var(--accent-deep); font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
 .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 14px; }
 .meta strong { color: var(--ink); }
+.countdown { display: grid; gap: 2px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.countdown span { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; }
+.countdown strong { color: var(--ink); font-variant-numeric: tabular-nums; font-size: clamp(1.8rem, 4vw, 2.8rem); line-height: 1; letter-spacing: -.06em; }
 .muted { color: var(--muted); }
 .section { margin-top: var(--space-section); }
 .panel { padding: var(--space-panel); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }

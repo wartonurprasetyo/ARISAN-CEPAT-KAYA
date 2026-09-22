@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { campaignCountdown, campaignOpenDelay, formatCountdown, isCampaignOpen } from "../lib/campaign";
 import { rupiah } from "../lib/format";
 import { supabase } from "../lib/supabase";
 
@@ -15,6 +16,7 @@ export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; mod
   const [messageClass, setMessageClass] = useState("warn");
   const [winner, setWinner] = useState<(Slot & { claimantName: string }) | null>(null);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     const client = supabase;
@@ -39,8 +41,20 @@ export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; mod
   }, [campaignSlug, load]);
 
   const filled = slots.filter(slot => slot.owner_name).length;
-  const isOpen = campaign?.state === "open" || (!campaign?.is_test && campaign?.state === "scheduled" && Date.now() >= new Date(campaign.opens_at).getTime());
+  const isOpen = campaign ? isCampaignOpen(campaign, now) : false;
+  const countdown = campaign ? campaignCountdown(campaign, now) : null;
+  const countdownLabel = formatCountdown(countdown);
+  const countdownActive = campaign ? campaignOpenDelay(campaign, now) !== null && !isOpen : false;
   const isDone = campaign?.state === "completed" || filled === 10;
+
+  useEffect(() => {
+    if (!campaign || !countdownActive) return;
+
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    const delay = campaignOpenDelay(campaign) || 0;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(delay + 50, 2147483647));
+    return () => { window.clearInterval(interval); window.clearTimeout(timer); };
+  }, [campaign, countdownActive]);
 
   useEffect(() => {
     if (!supabase) { setMessage("Konfigurasi Supabase belum tersedia."); setMessageClass("closed-msg"); }
@@ -70,7 +84,7 @@ export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; mod
       {loading ? <div className="skeleton" aria-label="Memuat halaman" /> : <>
         <section className="hero">
           <div className="hero-copy"><p className="eyebrow">{modeLabel}</p><h1>Pilih bulan GET kamu.</h1><p className="lead">Satu orang, satu slot. Siapa cepat dia dapat.</p><p>Periode November 2026 - Agustus 2027. Pilih bulan yang masih tersedia setelah WAR dibuka.</p></div>
-          <div className="hero-side"><div className="meta"><span>GET per bulan</span><strong>{campaign ? rupiah(campaign.get_amount) : "..."}</strong></div><div className="meta"><span>Slot terisi</span><strong>{filled}/10</strong></div><p className="muted">Status diperbarui otomatis saat ada klaim baru.</p></div>
+          <div className="hero-side"><div className="meta"><span>GET per bulan</span><strong>{campaign ? rupiah(campaign.get_amount) : "..."}</strong></div><div className="meta"><span>Slot terisi</span><strong>{filled}/10</strong></div>{countdownLabel && <div className="countdown" aria-live="polite"><span>WAR dimulai dalam</span><strong>{countdownLabel}</strong></div>}<p className="muted">Status diperbarui otomatis saat ada klaim baru.</p></div>
         </section>
 
         <section className="section panel" aria-labelledby="claim-heading">
