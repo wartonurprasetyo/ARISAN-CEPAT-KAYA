@@ -14,5 +14,16 @@
 - `/test` memakai data terpisah. Buka dari `/admin`, lakukan pengujian multi-browser, lalu reset dari panel admin.
 - `/admin` hanya menerima pengguna yang UUID-nya berada di `admin_users`.
 
-Supabase Free cukup untuk WAR ini, tetapi project yang tidak aktif dapat dipause. Buka halaman dan cek `/admin` sebelum acara dimulai.
+## Ganti password admin
 
+Jalankan dari terminal menggunakan service role key. Jangan masukkan key atau password ke source code.
+
+```bash
+SUPABASE_URL="https://PROJECT_REF.supabase.co" \
+SUPABASE_SERVICE_ROLE_KEY="ISI_DI_TERMINAL_SAJA" \
+node scripts/change-admin-password.mjs admin@example.com
+```
+
+Jika email tidak diberikan, script akan memintanya secara interaktif. Password baru diminta dua kali dan tidak disimpan ke file.
+
+Supabase Free cukup untuk WAR ini, tetapi project yang tidak aktif dapat dipause. Buka halaman dan cek `/admin` sebelum acara dimulai.
