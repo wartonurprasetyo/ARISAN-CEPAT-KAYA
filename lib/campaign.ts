@@ -40,6 +40,13 @@ export function campaignCountdown(campaign: CampaignSchedule, now = Date.now()) 
 export function formatCountdown(countdown: ReturnType<typeof campaignCountdown>) {
   if (!countdown) return null;
 
+  if (countdown.hours >= 24) {
+    const days = Math.floor(countdown.hours / 24);
+    const hours = countdown.hours % 24;
+    const dayLabel = `${days} hari`;
+    return hours > 0 ? `${dayLabel} ${hours} jam` : dayLabel;
+  }
+
   return [countdown.hours, countdown.minutes, countdown.seconds]
     .map(value => String(value).padStart(2, "0"))
     .join(":");
