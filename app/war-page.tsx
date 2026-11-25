@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { campaignCountdown, campaignOpenDelay, formatCountdown, isCampaignOpen } from "../lib/campaign";
 import { rupiah } from "../lib/format";
 import { supabase } from "../lib/supabase";
 
 type Campaign = { id: string; name: string; get_amount: number; opens_at: string; state: string; is_test: boolean };
 type Slot = { id: string; position: number; month_label: string; owner_name: string | null; claimed_at: string | null };
+
+const CAMPAIGN_COLUMNS = "id,name,get_amount,opens_at,state,is_test";
+const SLOT_COLUMNS = "id,position,month_label,owner_name,claimed_at";
 
 export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; modeLabel: string }) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -17,51 +20,97 @@ export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; mod
   const [winner, setWinner] = useState<(Slot & { claimantName: string }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
+  const [clockOffset, setClockOffset] = useState(0);
+  const [loadError, setLoadError] = useState(false);
+  const requestSeq = useRef(0);
+  const reloadTimer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const client = supabase;
     if (!client) { setLoading(false); return; }
-    const { data: currentCampaign } = await client.from("campaigns").select("id,name,get_amount,opens_at,state,is_test").eq("slug", campaignSlug).single();
-    if (!currentCampaign) { setLoading(false); return; }
-    setCampaign(currentCampaign);
-    const { data: currentSlots } = await client.from("slots").select("id,position,month_label,owner_name,claimed_at").eq("campaign_id", currentCampaign.id).order("position");
-    setSlots(currentSlots || []);
+    const seq = ++requestSeq.current;
+    const [campaignRes, nowRes] = await Promise.all([
+      client.from("campaigns").select(`${CAMPAIGN_COLUMNS},slots(${SLOT_COLUMNS})`).eq("slug", campaignSlug).order("position", { referencedTable: "slots" }).maybeSingle(),
+      client.rpc("server_now"),
+    ]);
+    if (seq !== requestSeq.current) return;
+    if (campaignRes.error) { setLoadError(true); setLoading(false); return; }
+    const row = campaignRes.data as (Campaign & { slots: Slot[] | null }) | null;
+    if (row) {
+      const { slots: rows, ...current } = row;
+      setCampaign(current);
+      setSlots(rows ?? []);
+    }
+    setLoadError(false);
+    if (!nowRes.error && typeof nowRes.data === "string") {
+      const serverTime = Date.parse(nowRes.data);
+      if (Number.isFinite(serverTime)) setClockOffset(serverTime - Date.now());
+    }
     setLoading(false);
   }, [campaignSlug]);
 
-  useEffect(() => {
-    load();
-    const client = supabase;
-    if (!client) return;
-    const channel = client.channel(`war-${campaignSlug}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "slots" }, load)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "campaigns" }, load)
-      .subscribe();
-    return () => { void client.removeChannel(channel); };
-  }, [campaignSlug, load]);
+  const scheduleReload = useCallback(() => {
+    if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    reloadTimer.current = window.setTimeout(() => { reloadTimer.current = null; void load(); }, 250);
+  }, [load]);
 
+  useEffect(() => {
+    void load();
+    const onVisible = () => { if (document.visibilityState === "visible") scheduleReload(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (reloadTimer.current !== null) { window.clearTimeout(reloadTimer.current); reloadTimer.current = null; }
+    };
+  }, [load, scheduleReload]);
+
+  const campaignId = campaign?.id;
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !campaignId) return;
+    let poll: number | null = null;
+    const stopPolling = () => { if (poll !== null) { window.clearInterval(poll); poll = null; } };
+    const channel = client.channel(`war-${campaignSlug}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "slots", filter: `campaign_id=eq.${campaignId}` }, payload => {
+        if (payload.eventType !== "UPDATE") { scheduleReload(); return; }
+        const next = payload.new as Slot;
+        setSlots(prev => prev.map(slot => slot.id === next.id ? { ...slot, owner_name: next.owner_name, claimed_at: next.claimed_at } : slot));
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "campaigns", filter: `id=eq.${campaignId}` }, payload => {
+        const next = payload.new as Campaign;
+        setCampaign(prev => prev ? { ...prev, state: next.state, opens_at: next.opens_at, get_amount: next.get_amount, name: next.name } : prev);
+      })
+      .subscribe(status => {
+        if (status === "SUBSCRIBED") { stopPolling(); scheduleReload(); }
+        else if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && poll === null) poll = window.setInterval(scheduleReload, 5000);
+      });
+    return () => { stopPolling(); void client.removeChannel(channel); };
+  }, [campaignId, campaignSlug, scheduleReload]);
+
+  const serverNow = now + clockOffset;
   const filled = slots.filter(slot => slot.owner_name).length;
-  const isOpen = campaign ? isCampaignOpen(campaign, now) : false;
-  const countdown = campaign ? campaignCountdown(campaign, now) : null;
+  const isOpen = campaign ? isCampaignOpen(campaign, serverNow) : false;
+  const countdown = campaign ? campaignCountdown(campaign, serverNow) : null;
   const countdownLabel = formatCountdown(countdown);
-  const countdownActive = campaign ? campaignOpenDelay(campaign, now) !== null && !isOpen : false;
+  const countdownActive = campaign ? campaignOpenDelay(campaign, serverNow) !== null && !isOpen : false;
   const isDone = campaign?.state === "completed" || filled === 10;
 
   useEffect(() => {
     if (!campaign || !countdownActive) return;
 
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    const delay = campaignOpenDelay(campaign) || 0;
+    const delay = campaignOpenDelay(campaign, Date.now() + clockOffset) || 0;
     const timer = window.setTimeout(() => setNow(Date.now()), Math.min(delay + 50, 2147483647));
     return () => { window.clearInterval(interval); window.clearTimeout(timer); };
-  }, [campaign, countdownActive]);
+  }, [campaign, countdownActive, clockOffset]);
 
   useEffect(() => {
     if (!supabase) { setMessage("Konfigurasi Supabase belum tersedia."); setMessageClass("closed-msg"); }
+    else if (loadError && !campaign) { setMessage("Gagal memuat data WAR. Coba muat ulang halaman."); setMessageClass("closed-msg"); }
     else if (isDone) { setMessage("WAR telah selesai. Seluruh 10 slot sudah terisi."); setMessageClass("closed-msg"); }
     else if (isOpen) { setMessage(`WAR sedang berlangsung. ${filled}/10 slot terisi.`); setMessageClass("ok"); }
     else { setMessage("WAR belum dimulai."); setMessageClass("warn"); }
-  }, [filled, isDone, isOpen]);
+  }, [filled, isDone, isOpen, loadError, campaign]);
 
   async function take(slot: Slot) {
     const client = supabase;
@@ -70,8 +119,9 @@ export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; mod
     if (!claimantName) { setMessage("Masukkan nama perwakilan terlebih dahulu."); setMessageClass("warn"); return; }
     const { data, error } = await client.rpc("claim_slot", { p_campaign_slug: campaignSlug, p_slot_id: slot.id, p_name: claimantName, p_request_id: crypto.randomUUID() });
     if (error) { setMessage("Koneksi gagal. Silakan coba lagi."); setMessageClass("closed-msg"); return; }
-    if (data?.ok) { setWinner({ ...slot, claimantName }); setName(""); setMessage("Klaim berhasil tersimpan."); setMessageClass("ok"); await load(); }
-    else { setMessage(data?.message || "Slot baru saja diambil orang lain."); setMessageClass("warn"); await load(); }
+    if (data?.ok) { setWinner({ ...slot, claimantName }); setName(""); setMessage("Klaim berhasil tersimpan."); setMessageClass("ok"); }
+    else { setMessage(data?.message || "Slot baru saja diambil orang lain."); setMessageClass("warn"); }
+    scheduleReload();
   }
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { campaignOpenDelay, getCampaignDisplayState } from "../../lib/campaign";
 import { formatWib, formatWibParts } from "../../lib/format";
 import { supabase } from "../../lib/supabase";
@@ -10,11 +11,17 @@ type Slot = { id: string; campaign_id: string; position: number; month_label: st
 type Audit = { id: number; campaign_id: string | null; claimant_name: string | null; action: string; result: string; reason: string | null; created_at: string };
 
 const wibInput = (iso: string) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)).replace(" ", "T");
+const REJECTED_NOTICE = "Perubahan ditolak (bukan admin atau sesi kedaluwarsa).";
+
+async function ensureAdmin(client: SupabaseClient) {
+  const { data, error } = await client.rpc("is_admin");
+  return !error && data === true;
+}
 
 export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [audits, setAudits] = useState<Audit[]>([]);
@@ -22,19 +29,54 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!supabase) { setLoading(false); return; }
-    const [{ data: campaignData }, { data: slotData }, { data: auditData }] = await Promise.all([
+    const [campaignRes, slotRes, auditRes] = await Promise.all([
       supabase.from("campaigns").select("id,slug,name,state,opens_at,get_amount,is_test").order("is_test"),
       supabase.from("slots").select("id,campaign_id,position,month_label,owner_name,claimed_at").order("position"),
       supabase.from("audit_logs").select("id,campaign_id,claimant_name,action,result,reason,created_at").order("created_at", { ascending: false }).limit(50)
     ]);
-    setCampaigns(campaignData || []); setSlots(slotData || []); setAudits(auditData || []);
+    const failed = [campaignRes, slotRes, auditRes].find(res => res.error);
+    if (failed?.error) setNotice(failed.error.message);
+    setCampaigns(campaignRes.data || []); setSlots(slotRes.data || []); setAudits(auditRes.data || []);
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { if (supabase) supabase.auth.getUser().then(({ data }) => setUser(data.user)); }, []);
-  useEffect(() => { if (user) load(); }, [user]);
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    let active = true;
+    client.auth.getUser().then(async ({ data }) => {
+      if (!active || !data.user) return;
+      if (await ensureAdmin(client)) { if (active) setUser(data.user); return; }
+      await client.auth.signOut();
+      if (active) { setUser(null); setNotice("Akun ini bukan admin."); }
+    });
+    const { data: listener } = client.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) setUser(null);
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => { if (user) void load(); }, [user, load]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !user) return;
+    let timer: number | null = null;
+    const reload = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { timer = null; void load(); }, 300);
+    };
+    const channel = client.channel("admin-live")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "slots" }, reload)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "campaigns" }, reload)
+      .subscribe();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      void client.removeChannel(channel);
+    };
+  }, [user, load]);
 
   useEffect(() => {
     const delays = campaigns
@@ -49,32 +91,30 @@ export default function AdminPage() {
   async function login(e: FormEvent) {
     e.preventDefault();
     if (!supabase) return;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return setNotice(error.message);
-    const { data } = await supabase.auth.getUser();
-    const { data: admin } = await supabase.from("admin_users").select("user_id").eq("user_id", data.user?.id || "").maybeSingle();
-    if (!admin) { await supabase.auth.signOut(); return setNotice("Akun ini bukan admin."); }
+    if (!(await ensureAdmin(supabase))) { await supabase.auth.signOut(); return setNotice("Akun ini bukan admin."); }
     setUser(data.user); setNotice("");
   }
 
   async function setState(c: Campaign, state: string) {
     if (!supabase) return;
-    const { error } = await supabase.from("campaigns").update({ state }).eq("id", c.id);
-    setNotice(error ? error.message : `${c.name}: ${state}`); load();
+    const { data, error } = await supabase.from("campaigns").update({ state }).eq("id", c.id).select("id");
+    setNotice(error ? error.message : !data?.length ? REJECTED_NOTICE : `${c.name}: ${state}`); void load();
   }
 
   async function saveCampaign(e: FormEvent<HTMLFormElement>, c: Campaign) {
     e.preventDefault(); if (!supabase) return;
     const form = new FormData(e.currentTarget); const get_amount = Number(form.get("amount")); const raw = String(form.get("opens_at"));
     if (!Number.isInteger(get_amount) || get_amount <= 0 || !raw) return setNotice("Nominal dan jadwal wajib valid.");
-    const { error } = await supabase.from("campaigns").update({ get_amount, opens_at: new Date(`${raw}:00+07:00`).toISOString() }).eq("id", c.id);
-    setNotice(error ? error.message : "Konfigurasi tersimpan."); load();
+    const { data, error } = await supabase.from("campaigns").update({ get_amount, opens_at: new Date(`${raw}:00+07:00`).toISOString() }).eq("id", c.id).select("id");
+    setNotice(error ? error.message : !data?.length ? REJECTED_NOTICE : "Konfigurasi tersimpan."); void load();
   }
 
   async function resetTest() {
     if (!supabase || !confirm("Reset semua data TEST?")) return;
     const { data, error } = await supabase.rpc("reset_test_campaign");
-    setNotice(error ? error.message : data?.message || "TEST di-reset."); load();
+    setNotice(error ? error.message : data?.message || "TEST di-reset."); void load();
   }
 
   async function logout() { if (!supabase) return; await supabase.auth.signOut(); setUser(null); }
