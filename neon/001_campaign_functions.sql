@@ -1,4 +1,5 @@
 -- Function, trigger, dan index campaign di Neon. Aman dijalankan ulang.
+-- claim_slot memerlukan kolom period_no dari 002_periods.sql.
 -- Tidak menyentuh tabel auth (app_users, app_sessions, admin_users, superadmin_users).
 -- Pengecekan admin dilakukan aplikasi, bukan database: tidak ada RLS dan tidak ada SECURITY DEFINER.
 begin;
@@ -26,9 +27,13 @@ begin
   end if;
 
   -- Jalur cepat (tanpa lock): hasil hanya dipakai untuk menolak.
-  select * into c from public.campaigns where slug=p_campaign_slug;
+  select * into c from public.campaigns where slug=p_campaign_slug order by period_no desc limit 1;
   if not found then
     return jsonb_build_object('ok',false,'code','not_found','message','WAR tidak ditemukan.');
+  end if;
+  -- Tab lama memegang slot periode sebelumnya atau yang sudah dihapus. Tanpa audit: slot_id bisa sudah tidak ada.
+  if not exists(select 1 from public.slots where id=p_slot_id and campaign_id=c.id) then
+    return jsonb_build_object('ok',false,'code','period_changed','message','Periode sudah berganti. Pilih slot dari daftar terbaru.');
   end if;
   if c.state in ('closed','completed') or (c.state='scheduled' and now()<c.opens_at) then
     insert into public.audit_logs(campaign_id,slot_id,request_id,claimant_name,action,result,reason)

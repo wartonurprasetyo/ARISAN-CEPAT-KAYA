@@ -1,16 +1,17 @@
 {
   "name": "war-arisan-cepat-kaya",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --experimental-strip-types --test lib/auth/auth.test.mjs"
+    "test": "node --experimental-strip-types --test lib/auth/auth.test.mjs lib/campaign.test.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",
+    "@wnp_code/design-system": "^0.2.2",
     "bcryptjs": "^3.0.3",
     "next": "^15.2.0",
     "react": "^19.0.0",
@@ -18,9 +19,11 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
     "@types/node": "^22.13.5",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "tailwindcss": "^4.3.5",
     "typescript": "^5.7.3"
   },
   "engines": {

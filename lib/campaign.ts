@@ -51,3 +51,10 @@ export function formatCountdown(countdown: ReturnType<typeof campaignCountdown>)
     .map(value => String(value).padStart(2, "0"))
     .join(":");
 }
+
+/** "2027-09" → ["September 2027", ...], one label for each of the 10 slots. */
+export function monthLabels(startMonth: string) {
+  const [year, month] = startMonth.split("-").map(Number);
+  const format = new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" });
+  return Array.from({ length: 10 }, (_, i) => format.format(new Date(Date.UTC(year, month - 1 + i, 1))));
+}

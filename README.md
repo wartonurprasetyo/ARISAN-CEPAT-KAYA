@@ -2,11 +2,13 @@
 
 Next.js 15 + Neon (Postgres). Database dan akun admin dipakai bersama dengan `compro-portal-frontend`. Browser tidak terhubung langsung ke database; semua query berjalan di server.
 
+Tampilan memakai `@wnp_code/design-system` dengan skin claymorphism (`data-skin="clay"` di `app/layout.tsx`). Komponennya hanya boleh diimpor dari file `"use client"`.
+
 ## Setup
 
 1. Pakai Node.js 22, lalu jalankan `pnpm install`.
 2. Salin `.env.example` menjadi `.env.local` dan isi `DATABASE_URL`. Hanya untuk server: jangan diberi awalan `NEXT_PUBLIC_` dan jangan di-commit. Untuk uji coba, pakai **branch Neon terpisah**, bukan database production.
-3. Jalankan `neon/001_campaign_functions.sql` (Neon SQL Editor atau `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f neon/001_campaign_functions.sql`). Aman dijalankan ulang. Tabel campaign dan tabel auth sudah ada di Neon; script ini hanya menambah index, function, dan trigger audit.
+3. Jalankan `neon/002_periods.sql`, **lalu** `neon/001_campaign_functions.sql` (Neon SQL Editor atau `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <file>`). Keduanya aman dijalankan ulang. Tabel campaign dan tabel auth sudah ada di Neon; script ini hanya menambah kolom periode, index, function, dan trigger audit. Untuk database yang sudah berjalan: backup (atau buat branch Neon), jalankan kedua script, baru deploy aplikasi.
 4. `pnpm dev` untuk lokal. Di Vercel, isi `DATABASE_URL` sebelum build; build gagal tanpa variabel itu.
 
 Folder `supabase/migrations/` adalah riwayat skema lama dan tidak dijalankan lagi.
@@ -19,6 +21,15 @@ Folder `supabase/migrations/` adalah riwayat skema lama dan tidak dijalankan lag
 - Halaman peserta memuat ulang data tiap 3 detik mulai 10 menit sebelum buka sampai slot penuh atau ditutup, dan hanya saat tab terlihat. Data publik di-cache 3 detik.
 - Di luar jendela itu (status `closed`/`completed`, atau jadwal masih lama), halaman **tidak** memperbarui diri. Setelah admin membuka atau menjadwalkan ulang, peserta perlu memuat ulang halaman atau berpindah tab lalu kembali.
 - Klaim dibatasi 30 percobaan per menit per IP.
+
+## Periode
+
+- Satu baris `campaigns` = satu periode (`period_no`). Periode terbaru adalah yang aktif; data sebelum fitur ini menjadi periode 1.
+- Periode baru dibuat di `/admin` setelah periode aktif `closed` atau `completed`: isi bulan GET pertama, nominal, dan jadwal buka (harus di masa depan). 10 bulan berurutan dibuat otomatis.
+- Periode lama tidak bisa diubah. Periode terbaru (selain periode 1) bisa dihapus selama belum ada klaim.
+- `/riwayat` menampilkan semua periode sebelum periode aktif.
+- Satu nama hanya mendapat satu slot **per periode**.
+- TEST tidak memakai periode.
 
 ## Admin
 
@@ -34,6 +45,8 @@ Folder `supabase/migrations/` adalah riwayat skema lama dan tidak dijalankan lag
 ```bash
 pnpm test
 ```
+
+Cek SQL (branch Neon, bukan production): `neon/001_campaign_functions.test.sql` dan `neon/002_periods.test.sql`.
 
 ## Versioning aplikasi
 

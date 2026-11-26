@@ -1,11 +1,13 @@
 "use client";
 
+import { Alert, Button, Card, Dialog, DialogContent, DialogDescription, DialogTitle, Input, Label, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, type AlertProps } from "@wnp_code/design-system";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { campaignCountdown, campaignOpenDelay, formatCountdown, isCampaignOpen } from "../lib/campaign";
 import { rupiah } from "../lib/format";
 import { claimSlot } from "./actions";
+import { SiteHeader } from "./site-header";
 
-type Campaign = { id: string; name: string; get_amount: number; opens_at: string; state: string; is_test: boolean };
+type Campaign = { id: string; period_no: number; name: string; get_amount: number; opens_at: string; state: string; is_test: boolean };
 type Slot = { id: string; position: number; month_label: string; owner_name: string | null; claimed_at: string | null };
 type CampaignResponse = { campaign: Campaign; slots: Slot[]; serverNow: number };
 
@@ -17,7 +19,7 @@ export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; mod
   const [slots, setSlots] = useState<Slot[]>([]);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("Memuat status WAR...");
-  const [messageClass, setMessageClass] = useState("warn");
+  const [tone, setTone] = useState<AlertProps["variant"]>("warning");
   const [winner, setWinner] = useState<(Slot & { claimantName: string }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
@@ -96,57 +98,68 @@ export function WarPage({ campaignSlug, modeLabel }: { campaignSlug: string; mod
   }, [campaign, countdownActive, clockOffset]);
 
   useEffect(() => {
-    if (loadError && !hasCampaign) { setMessage("Gagal memuat data WAR. Coba muat ulang halaman."); setMessageClass("closed-msg"); }
-    else if (isDone) { setMessage("WAR telah selesai. Seluruh 10 slot sudah terisi."); setMessageClass("closed-msg"); }
-    else if (isOpen) { setMessage(`WAR sedang berlangsung. ${filled}/10 slot terisi.`); setMessageClass("ok"); }
-    else { setMessage("WAR belum dimulai."); setMessageClass("warn"); }
+    if (loadError && !hasCampaign) { setMessage("Gagal memuat data WAR. Coba muat ulang halaman."); setTone("danger"); }
+    else if (isDone) { setMessage("WAR telah selesai. Seluruh 10 slot sudah terisi."); setTone("danger"); }
+    else if (isOpen) { setMessage(`WAR sedang berlangsung. ${filled}/10 slot terisi.`); setTone("success"); }
+    else { setMessage("WAR belum dimulai."); setTone("warning"); }
     // Not `campaign`: every poll replaces that object and would wipe claim messages.
   }, [filled, isDone, isOpen, loadError, hasCampaign]);
 
   async function take(slot: Slot) {
     if (!campaign) return;
     const claimantName = name.trim();
-    if (!claimantName) { setMessage("Masukkan nama perwakilan terlebih dahulu."); setMessageClass("warn"); return; }
+    if (!claimantName) { setMessage("Masukkan nama perwakilan terlebih dahulu."); setTone("warning"); return; }
     let result: Awaited<ReturnType<typeof claimSlot>>;
     try { result = await claimSlot(campaignSlug, slot.id, claimantName); }
-    catch { setMessage("Koneksi gagal. Silakan coba lagi."); setMessageClass("closed-msg"); return; }
-    if (result.ok) { setWinner({ ...slot, claimantName }); setName(""); setMessage("Klaim berhasil tersimpan."); setMessageClass("ok"); }
-    else { setMessage(result.message || "Slot baru saja diambil orang lain."); setMessageClass("warn"); }
+    catch { setMessage("Koneksi gagal. Silakan coba lagi."); setTone("danger"); return; }
+    if (result.ok) { setWinner({ ...slot, claimantName }); setName(""); setMessage("Klaim berhasil tersimpan."); setTone("success"); }
+    else { setMessage(result.message || "Slot baru saja diambil orang lain."); setTone("warning"); }
     scheduleReload();
   }
 
   return (
     <main className="wrap">
-      <header className="site-header">
-        <a className="brand" href="/"><span className="brand-mark">W</span><span>WAR Arisan</span></a>
-        <nav className="nav" aria-label="Navigasi utama"><a href="/">WAR resmi</a><a href="/test">Mode test</a><a href="/admin">Admin</a></nav>
-      </header>
+      <SiteHeader />
 
-      {loading ? <div className="skeleton" aria-label="Memuat halaman" /> : <>
+      {loading ? <Skeleton className="h-44 w-full rounded-lg" aria-label="Memuat halaman" /> : <>
         <section className="hero">
-          <div className="hero-copy"><p className="eyebrow">{modeLabel}</p><h1>Pilih bulan GET kamu.</h1><p className="lead">Satu orang, satu slot. Siapa cepat dia dapat.</p><p>Periode November 2026 - Agustus 2027. Pilih bulan yang masih tersedia setelah WAR dibuka.</p></div>
+          <div className="hero-copy"><p className="eyebrow">{modeLabel}</p><h1>Pilih bulan GET kamu.</h1><p className="lead">Satu orang, satu slot. Siapa cepat dia dapat.</p><p>{campaign && slots.length > 0 && `Periode ${campaign.period_no}: ${slots[0].month_label} - ${slots[slots.length - 1].month_label}. `}Pilih bulan yang masih tersedia setelah WAR dibuka.</p></div>
           <div className="hero-side"><div className="meta"><span>GET per bulan</span><strong>{campaign ? rupiah(campaign.get_amount) : "..."}</strong></div><div className="meta"><span>Slot terisi</span><strong>{filled}/10</strong></div>{countdownLabel && <div className="countdown" aria-live="polite"><span>WAR dimulai dalam</span><strong>{countdownLabel}</strong></div>}<p className="muted">Status diperbarui otomatis saat ada klaim baru.</p></div>
         </section>
 
-        <section className="section panel" aria-labelledby="claim-heading">
-          <div className="section-heading"><div><p className="eyebrow">Mulai dari sini</p><h2 id="claim-heading">Masukkan nama perwakilan</h2></div><p>Nama ini akan tercatat bersama bulan yang berhasil kamu ambil.</p></div>
-          <div className="field"><label htmlFor="name">Nama Perwakilan</label><input id="name" className="input" value={name} onChange={e => setName(e.target.value)} maxLength={80} placeholder="Contoh: Nimas" disabled={!isOpen} /></div>
-          <div className={`status ${messageClass}`} role="status"><span className="status-mark" aria-hidden="true" />{message}</div>
+        <section className="section" aria-labelledby="claim-heading">
+          <Card className="panel">
+            <div className="section-heading"><div><p className="eyebrow">Mulai dari sini</p><h2 id="claim-heading">Masukkan nama perwakilan</h2></div><p>Nama ini akan tercatat bersama bulan yang berhasil kamu ambil.</p></div>
+            <div className="field"><Label htmlFor="name">Nama Perwakilan</Label><Input id="name" size="lg" value={name} onChange={e => setName(e.target.value)} maxLength={80} placeholder="Contoh: Nimas" disabled={!isOpen} /></div>
+            <Alert variant={tone} className="status">{message}</Alert>
+          </Card>
         </section>
 
-        <section className="section panel" aria-labelledby="slots-heading">
-          <div className="section-heading"><div><p className="eyebrow">10 pilihan bulan</p><h2 id="slots-heading">Pilih slot yang tersedia</h2></div><p>Slot yang sudah terambil tidak dapat dipilih ulang.</p></div>
-          <div className="slot-grid">{slots.map(slot => { const taken = Boolean(slot.owner_name); return <button key={slot.id} className={`slot ${taken ? "taken" : isOpen ? "" : "closed"}`} disabled={taken || !isOpen} onClick={() => take(slot)}><b>{slot.position}. {slot.month_label}</b><span>{taken ? `Terambil oleh ${slot.owner_name}` : isOpen ? "Tersedia untuk dipilih" : "Belum tersedia"}</span></button>; })}</div>
+        <section className="section" aria-labelledby="slots-heading">
+          <Card className="panel">
+            <div className="section-heading"><div><p className="eyebrow">10 pilihan bulan</p><h2 id="slots-heading">Pilih slot yang tersedia</h2></div><p>Slot yang sudah terambil tidak dapat dipilih ulang.</p></div>
+            <div className="slot-grid">{slots.map(slot => { const taken = Boolean(slot.owner_name); return <button key={slot.id} type="button" className={`slot ${taken ? "taken" : isOpen ? "" : "closed"}`} disabled={taken || !isOpen} onClick={() => take(slot)}><b>{slot.position}. {slot.month_label}</b><span>{taken ? `Terambil oleh ${slot.owner_name}` : isOpen ? "Tersedia untuk dipilih" : "Belum tersedia"}</span></button>; })}</div>
+          </Card>
         </section>
 
-        <section className="section panel" aria-labelledby="result-heading">
-          <div className="section-heading"><div><p className="eyebrow">Hasil terkini</p><h2 id="result-heading">Daftar bulan GET</h2></div><p>Data ini mengikuti status terbaru dari server.</p></div>
-          <div className="table-wrap"><table className="result"><thead><tr><th>No</th><th>Bulan GET</th><th>Perwakilan</th><th>GET</th></tr></thead><tbody>{slots.map(slot => <tr key={slot.id}><td>{slot.position}</td><td>{slot.month_label}</td><td>{slot.owner_name || "Belum diambil"}</td><td>{campaign ? rupiah(campaign.get_amount) : "..."}</td></tr>)}</tbody></table></div>
-          <p className="total">Total GET: <strong>{campaign ? rupiah(campaign.get_amount * 10) : "..."}</strong></p>
+        <section className="section" aria-labelledby="result-heading">
+          <Card className="panel">
+            <div className="section-heading"><div><p className="eyebrow">Hasil terkini</p><h2 id="result-heading">Daftar bulan GET</h2></div><p>Data ini mengikuti status terbaru dari server.</p></div>
+            <Table className="result"><TableHeader><TableRow><TableHead>No</TableHead><TableHead>Bulan GET</TableHead><TableHead>Perwakilan</TableHead><TableHead>GET</TableHead></TableRow></TableHeader><TableBody>{slots.map(slot => <TableRow key={slot.id}><TableCell>{slot.position}</TableCell><TableCell>{slot.month_label}</TableCell><TableCell>{slot.owner_name || "Belum diambil"}</TableCell><TableCell>{campaign ? rupiah(campaign.get_amount) : "..."}</TableCell></TableRow>)}</TableBody></Table>
+            <p className="total">Total GET: <strong>{campaign ? rupiah(campaign.get_amount * 10) : "..."}</strong></p>
+          </Card>
         </section>
       </>}
 
-      {winner && campaign && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="winner-heading"><div className="modal"><p className="eyebrow">Klaim berhasil</p><h2 id="winner-heading">Bulan GET sudah jadi milikmu.</h2><p><strong>{winner.month_label}</strong> tercatat untuk <strong>{winner.claimantName}</strong>.</p><p>Nilai GET: <strong>{rupiah(campaign.get_amount)}</strong></p><button className="primary wide" onClick={() => setWinner(null)}>Tutup</button></div></div>}
+      {winner && campaign && <Dialog open onOpenChange={() => setWinner(null)}>
+        <DialogContent className="w-[calc(100%-2rem)] rounded-lg">
+          <p className="eyebrow">Klaim berhasil</p>
+          <DialogTitle>Bulan GET sudah jadi milikmu.</DialogTitle>
+          <DialogDescription className="mt-3"><strong>{winner.month_label}</strong> tercatat untuk <strong>{winner.claimantName}</strong>.</DialogDescription>
+          <p className="muted mt-2 mb-6">Nilai GET: <strong>{rupiah(campaign.get_amount)}</strong></p>
+          <Button size="lg" className="w-full" onClick={() => setWinner(null)}>Tutup</Button>
+        </DialogContent>
+      </Dialog>}
     </main>
   );
 }
